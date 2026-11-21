@@ -12,6 +12,7 @@ async function boot(now) {
   let clock = now;
   const app = createApp({ dataDir: dir, env: {}, fetchImpl: fixtureFetch, clock: () => clock });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
+  app.server.unref();
   const base = `http://127.0.0.1:${app.server.address().port}`;
   const call = async (method, url, body) => {
     const res = await fetch(base + url, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });

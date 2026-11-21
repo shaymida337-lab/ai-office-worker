@@ -14,13 +14,15 @@ export const DEFAULT_SETTINGS = Object.freeze({
   shabbatMarginAfterMin: 30, // חידוש X דקות אחרי הבדלה
   blockMemorialDays: true, // יום השואה, יום הזיכרון, תשעה באב
   facebookApiVersion: 'v23.0',
+  // גיליון הלידים (קריאה בלבד)
+  sheet: { spreadsheetId: '1AZ6kSGtDyvmO2FrRcyQO8zA6j_pQR1oshCm7GyraTLY', tab: 'לידים מהאתר', autoSync: true, syncEveryMinutes: 30 },
 });
 
 export function defaultDb() {
   return {
     version: 1,
     createdAt: new Date().toISOString(),
-    settings: { ...DEFAULT_SETTINGS, postingHours: { ...DEFAULT_SETTINGS.postingHours } },
+    settings: { ...DEFAULT_SETTINGS, postingHours: { ...DEFAULT_SETTINGS.postingHours }, sheet: { ...DEFAULT_SETTINGS.sheet } },
     counters: {},
     groups: [],
     posts: [],
@@ -55,7 +57,8 @@ export class Store {
     const db = JSON.parse(fs.readFileSync(this.file, 'utf8'));
     const base = defaultDb();
     for (const k of Object.keys(base)) if (db[k] === undefined) db[k] = base[k];
-    db.settings = { ...base.settings, ...db.settings };
+    db.settings = { ...base.settings, ...db.settings, sheet: { ...base.settings.sheet, ...(db.settings?.sheet || {}) } };
+    if (!db.sheetSync) db.sheetSync = null;
     return db;
   }
 

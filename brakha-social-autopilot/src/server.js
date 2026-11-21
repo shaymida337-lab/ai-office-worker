@@ -12,6 +12,10 @@ import { tick, autoPlan, createPost, addSchedule, recordHistory, statusLabel } f
 import { liveStatus } from './publishers.js';
 import { attribute, computeStats, LEAD_STATUSES, LEAD_SOURCES } from './leads.js';
 import { siteUrl, whatsappUrl, whatsappText } from './utm.js';
+import { loadServiceAccount, validateServiceAccount, fetchSheetValues, importSheetLeads, parseCsv } from './sheets.js';
+import { checkFacebook, readSecrets, writeSecrets, effectiveEnv, mask } from './facebook.js';
+import { leadReport, reportCsv, leadsCsv, postsCsv, historyCsv } from './report.js';
+import { snapshot, dailySnapshot, listBackups, restore } from './backup.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = path.join(ROOT, 'public');
@@ -46,6 +50,27 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), env = process.env
   const db = () => store.db;
   const now = () => clock();
 
+  const saFile = path.join(dataDir, 'google-service-account.json');
+  const fbEnv = () => effectiveEnv(env, dataDir);
+  function serviceAccount() { try { return loadServiceAccount(saFile); } catch (e) { return { error: e.message }; } }
+
+  async function syncSheet(reason = 'manual') {
+    const d = db(); const n = now(); const cfg = d.settings.sheet;
+    const sa = serviceAccount();
+    if (!sa || sa.error) throw new HttpError(400, sa?.error || 'לא הוגדר מפתח Service Account — ראו "חיבור לגיליון" בהגדרות');
+    try {
+      const values = await fetchSheetValues({ sa, spreadsheetId: cfg.spreadsheetId, tab: cfg.tab, fetchImpl, nowMs: n.getTime() });
+      const r = importSheetLeads(store, values, { now: n });
+      d.sheetSync = { at: n.toISOString(), ok: true, reason, result: r };
+      store.log('sheet', `סנכרון גיליון (${reason}): ${r.rows} שורות · ${r.added} חדשים · ${r.updated} עודכנו · ${r.qa} בדיקות QA · ${r.duplicates} כפולים · ${r.real} אמיתיים`, {}, n);
+      store.save(); return d.sheetSync;
+    } catch (e) {
+      d.sheetSync = { at: n.toISOString(), ok: false, reason, error: e.message };
+      store.error('sheet', `סנכרון גיליון נכשל: ${e.message}`, {}, n); store.save();
+      throw new HttpError(502, e.message);
+    }
+  }
+
   function state() {
     const d = db();
     const n = now();
@@ -56,7 +81,7 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), env = process.env
       business: BUSINESS, services: SERVICES, areas: AREAS,
       targetTypes: TARGET_TYPES, leadStatuses: LEAD_STATUSES, leadSources: LEAD_SOURCES,
       settings: d.settings,
-      live: liveStatus(d.settings, env),
+      live: liveStatus(d.settings, fbEnv()),
       guard: { allowed: guard.allowed, reasons: guard.reasons, calendar: guard.calendar },
       calendar: d.calendar ? { source: SOURCE, fetchedAt: d.calendar.fetchedAt, range: d.calendar.range, coverageTo: cov ? new Date(cov.to).toISOString() : null, upcoming: upcomingWindows(d.calendar, d.settings, n, 6) } : null,
       groups: d.groups,
@@ -68,9 +93,12 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), env = process.env
       activity: d.activity.slice(-300).reverse(),
       errors: d.errors.slice(-200).reverse(),
       stats: computeStats(d, n),
+      report: leadReport(d),
+      backups: listBackups(store).slice(0, 15),
       connections: {
         hebcal: { ok: !!d.calendar && guard.calendar.verified, lastFetch: d.calendar?.fetchedAt || null },
-        facebookPage: { tokenPresent: !!env.FB_PAGE_ACCESS_TOKEN, pageIdPresent: !!env.FB_PAGE_ID, liveFlag: env.BRAKHA_ALLOW_LIVE === '1' },
+        facebookPage: (() => { const e = fbEnv(); const sec = readSecrets(dataDir); return { tokenPresent: !!e.FB_PAGE_ACCESS_TOKEN, tokenMasked: mask(e.FB_PAGE_ACCESS_TOKEN), tokenSource: env.FB_PAGE_ACCESS_TOKEN ? '.env' : sec.FB_PAGE_ACCESS_TOKEN ? 'הגדרות מקומיות' : null, pageId: e.FB_PAGE_ID || null, pageIdPresent: !!e.FB_PAGE_ID, liveFlag: env.BRAKHA_ALLOW_LIVE === '1', lastCheck: d.facebookCheck || null }; })(),
+        sheet: (() => { const sa = serviceAccount(); return { spreadsheetId: d.settings.sheet.spreadsheetId, tab: d.settings.sheet.tab, autoSync: d.settings.sheet.autoSync, serviceAccountEmail: sa && !sa.error ? sa.client_email : null, serviceAccountError: sa?.error || null, lastSync: d.sheetSync || null }; })(),
         websiteAnalytics: { connected: false, note: 'באתר אין כרגע כלי אנליטיקס — UTM נשמר בקישורים אך לא נמדד. התקנת GA4 (חינם) מחייבת שינוי באתר באישורך.' },
         whatsapp: { number: BUSINESS.phoneDisplay, note: 'לידים מוואטסאפ נרשמים ידנית; הקוד בהודעה מזהה את הפוסט.' },
       },
@@ -129,7 +157,7 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), env = process.env
       }
       store.save(); return s;
     }],
-    ['POST', /^\/api\/settings\/reset$/, () => { const keep = db().settings.killSwitch; db().settings = { ...DEFAULT_SETTINGS, postingHours: { ...DEFAULT_SETTINGS.postingHours }, killSwitch: keep }; store.save(); return db().settings; }],
+    ['POST', /^\/api\/settings\/reset$/, () => { const keep = db().settings.killSwitch; db().settings = { ...DEFAULT_SETTINGS, postingHours: { ...DEFAULT_SETTINGS.postingHours }, sheet: { ...db().settings.sheet }, killSwitch: keep }; store.save(); return db().settings; }],
 
     // קבוצות וערוצים
     ['POST', /^\/api\/groups$/, (b) => {
@@ -238,7 +266,7 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), env = process.env
       const s = find('schedule', id); if (s.status !== 'awaiting_manual') throw new HttpError(409, 'לא ממתין');
       s.status = 'skipped'; s.reason = 'דולג ידנית'; store.save(); return s;
     }],
-    ['POST', /^\/api\/scheduler\/tick$/, async () => tick(store, { now: now(), fetchImpl, env })],
+    ['POST', /^\/api\/scheduler\/tick$/, async () => tick(store, { now: now(), fetchImpl, env: fbEnv() })],
 
     // מדיה
     ['POST', /^\/api\/media$/, (b) => {
@@ -268,7 +296,7 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), env = process.env
         name: str(b.name, 200), phone: str(b.phone, 40), service: SERVICES.some((s) => s.id === b.service) ? b.service : null,
         area: AREAS.some((a) => a.id === b.area) ? b.area : null, source: LEAD_SOURCES[b.source] ? b.source : null,
         refCode: str(b.refCode, 40).toUpperCase() || null, message: str(b.message, 3000), utmSource: str(b.utmSource, 100),
-        notes: str(b.notes, 2000), isTest: bool(b.isTest), status: 'new', value: null,
+        notes: str(b.notes, 2000), manualTest: bool(b.isTest) ? true : undefined, origin: 'manual', status: 'new', value: null,
       };
       if (!lead.name && !lead.phone) throw new HttpError(400, 'חסר שם או טלפון');
       attribute(db(), lead);
@@ -279,8 +307,7 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), env = process.env
       if (b.status && LEAD_STATUSES[b.status]) l.status = b.status;
       if (b.notes !== undefined) l.notes = str(b.notes, 2000);
       if (b.value !== undefined) l.value = b.value === '' || b.value === null ? null : Math.max(0, Number(b.value) || 0);
-      if (b.isTest !== undefined) l.isTest = bool(b.isTest);
-      if (b.isTest !== undefined && !l.isTest) l.qaReasons = []; else if (b.isTest !== undefined) attribute(db(), l);
+      if (b.isTest !== undefined) { l.manualTest = bool(b.isTest); attribute(db(), l); }
       l.updatedAt = now().toISOString(); store.save(); return l;
     }],
     ['DELETE', /^\/api\/leads\/(L\d+)$/, (b, [id]) => { find('leads', id); db().leads = db().leads.filter((x) => x.id !== id); store.save(); return { ok: true }; }],
@@ -296,7 +323,69 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), env = process.env
 
     // לוח שנה
     ['POST', /^\/api\/calendar\/refresh$/, async () => ensureCalendar(store, { fetchImpl, now: now(), force: true })],
-    ['GET', /^\/api\/export$/, () => db()],
+    ['GET', /^\/api\/export$/, () => ({ __raw: true, type: 'application/json; charset=utf-8', filename: `brakha-backup-${now().toISOString().slice(0, 10)}.json`, body: JSON.stringify(db(), null, 2) })],
+    ['GET', /^\/api\/export\/(leads|posts|history|report)\.csv$/, (b, [kind], url) => {
+      const body = kind === 'leads' ? leadsCsv(db()) : kind === 'posts' ? postsCsv(db()) : kind === 'history' ? historyCsv(db())
+        : reportCsv(leadReport(db(), { from: url.searchParams.get('from') || null, to: url.searchParams.get('to') || null }));
+      return { __raw: true, type: 'text/csv; charset=utf-8', filename: `brakha-${kind}-${now().toISOString().slice(0, 10)}.csv`, body };
+    }],
+    ['GET', /^\/api\/report$/, (b, p, url) => {
+      const from = url.searchParams.get('from') || null; const to = url.searchParams.get('to') || null;
+      for (const d of [from, to]) if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new HttpError(400, 'תאריך לא תקין');
+      return leadReport(db(), { from, to });
+    }],
+
+    // גיבוי ושחזור
+    ['GET', /^\/api\/backups$/, () => listBackups(store)],
+    ['POST', /^\/api\/backups\/now$/, () => ({ file: snapshot(store, { now: now(), reason: 'manual' }) })],
+    ['POST', /^\/api\/backup\/restore$/, (b) => {
+      if (b.confirm !== 'שחזר') throw new HttpError(400, 'לאישור השחזור יש להקליד: שחזר');
+      try { return restore(store, b.data, { now: now() }); } catch (e) { throw new HttpError(400, e.message); }
+    }],
+
+    // גיליון לידים (קריאה בלבד)
+    ['POST', /^\/api\/sheet\/settings$/, (b) => {
+      const sh = db().settings.sheet;
+      if (b.spreadsheetId !== undefined) { if (!/^[A-Za-z0-9_-]{20,100}$/.test(b.spreadsheetId)) throw new HttpError(400, 'מזהה גיליון לא תקין'); sh.spreadsheetId = b.spreadsheetId; }
+      if (b.tab !== undefined) { const t = str(b.tab, 100); if (!t) throw new HttpError(400, 'חסר שם טאב'); sh.tab = t; }
+      if (b.autoSync !== undefined) sh.autoSync = bool(b.autoSync);
+      store.save(); return sh;
+    }],
+    ['POST', /^\/api\/sheet\/service-account$/, (b) => {
+      let sa; try { sa = typeof b.json === 'string' ? JSON.parse(b.json) : b.json; validateServiceAccount(sa); } catch (e) { throw new HttpError(400, `קובץ מפתח לא תקין: ${e.message}`); }
+      fs.writeFileSync(saFile, JSON.stringify(sa), { mode: 0o600 });
+      store.log('sheet', `נשמר מפתח Service Account (${sa.client_email})`, {}, now()); store.save();
+      return { serviceAccountEmail: sa.client_email };
+    }],
+    ['DELETE', /^\/api\/sheet\/service-account$/, () => { fs.rmSync(saFile, { force: true }); store.log('sheet', 'מפתח Service Account נמחק', {}, now()); store.save(); return { ok: true }; }],
+    ['POST', /^\/api\/sheet\/sync$/, () => syncSheet('manual')],
+    ['POST', /^\/api\/sheet\/import-csv$/, (b) => {
+      const rows = parseCsv(str(b.csv, 20 * 1024 * 1024));
+      if (rows.length < 2) throw new HttpError(400, 'קובץ ה-CSV ריק');
+      let r; try { r = importSheetLeads(store, rows, { now: now() }); } catch (e) { throw new HttpError(400, e.message); }
+      db().sheetSync = { at: now().toISOString(), ok: true, reason: 'csv', result: r };
+      store.log('sheet', `ייבוא CSV: ${r.rows} שורות · ${r.added} חדשים · ${r.updated} עודכנו · ${r.qa} QA · ${r.duplicates} כפולים`, {}, now());
+      store.save(); return db().sheetSync;
+    }],
+
+    // פייסבוק — שמירת פרטים מקומית + בדיקת הרשאות (קריאה בלבד)
+    ['POST', /^\/api\/facebook\/credentials$/, (b) => {
+      const patch = {};
+      if (b.pageId !== undefined) { const v = str(b.pageId, 40); if (v && !/^\d{5,25}$/.test(v)) throw new HttpError(400, 'מזהה דף צריך להיות מספרי'); patch.FB_PAGE_ID = v || null; }
+      if (b.token !== undefined && str(b.token)) { const v = str(b.token, 1000); if (!/^[A-Za-z0-9_-]{20,}$/.test(v)) throw new HttpError(400, 'פורמט טוקן לא תקין'); patch.FB_PAGE_ACCESS_TOKEN = v; }
+      writeSecrets(dataDir, patch);
+      store.log('facebook', 'פרטי החיבור לפייסבוק עודכנו (נשמרו מקומית בלבד)', {}, now()); store.save();
+      return { ok: true, tokenMasked: mask(fbEnv().FB_PAGE_ACCESS_TOKEN), pageId: fbEnv().FB_PAGE_ID || null };
+    }],
+    ['DELETE', /^\/api\/facebook\/credentials$/, () => { writeSecrets(dataDir, { FB_PAGE_ACCESS_TOKEN: null, FB_PAGE_ID: null }); db().facebookCheck = null; store.save(); return { ok: true }; }],
+    ['POST', /^\/api\/facebook\/check$/, async () => {
+      const e = fbEnv();
+      const r = await checkFacebook({ pageId: e.FB_PAGE_ID, token: e.FB_PAGE_ACCESS_TOKEN, apiVersion: db().settings.facebookApiVersion, fetchImpl });
+      r.liveEnabled = liveStatus(db().settings, e).ready;
+      db().facebookCheck = r;
+      store.log('facebook', `בדיקת חיבור לפייסבוק: ${r.ok ? 'תקין' : 'חסרים פריטים'}`, { missing: r.missingScopes }, now()); store.save();
+      return r;
+    }],
   ];
 
   async function handle(req, res) {
@@ -316,7 +405,11 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), env = process.env
         if (req.method !== 'GET' && !String(req.headers['content-type'] || '').includes('application/json')) throw new HttpError(415, 'נדרש application/json');
         const body = req.method === 'GET' ? {} : await readBody(req);
         const out = await r[2](body, url.pathname.match(r[1]).slice(1), url);
-        if (url.pathname === '/api/export') res.setHeader('content-disposition', `attachment; filename="brakha-backup-${now().toISOString().slice(0, 10)}.json"`);
+        if (out && out.__raw) {
+          res.setHeader('content-type', out.type);
+          if (out.filename) res.setHeader('content-disposition', `attachment; filename="${out.filename}"`);
+          res.writeHead(200); return res.end(out.body);
+        }
         res.writeHead(200); res.end(JSON.stringify(out));
       } catch (e) {
         const status = e.status || 500;
@@ -341,12 +434,18 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), env = process.env
   let timer = null; let running = false;
   async function runTick() {
     if (running) return; running = true;
-    try { await tick(store, { now: now(), fetchImpl, env }); } catch (e) { store.error('scheduler', e.message); store.save(); } finally { running = false; }
+    try {
+      await tick(store, { now: now(), fetchImpl, env: fbEnv() });
+      if (dailySnapshot(store, now())) store.log('backup', 'נשמר גיבוי יומי אוטומטי', {}, now());
+      const sh = db().settings.sheet; const last = db().sheetSync?.at ? Date.parse(db().sheetSync.at) : 0;
+      const sa = serviceAccount();
+      if (sh.autoSync && sa && !sa.error && now().getTime() - last > sh.syncEveryMinutes * 60000) await syncSheet('auto').catch(() => {});
+    } catch (e) { store.error('scheduler', e.message); store.save(); } finally { running = false; }
   }
   return {
-    store, server,
+    store, server, syncSheet, runTick,
     startScheduler(intervalMs = 60000) { runTick(); timer = setInterval(runTick, intervalMs); timer.unref?.(); },
-    stop() { clearInterval(timer); return new Promise((r) => server.close(r)); },
+    stop() { clearInterval(timer); const p = new Promise((r) => server.close(r)); server.closeAllConnections?.(); return p; },
   };
 }
 

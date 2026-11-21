@@ -15,11 +15,13 @@ export function extractRefCode(text) {
 /** זיהוי בדיקות QA — לעולם לא נספרות כלידים אמיתיים */
 export function qaReasons(lead) {
   const r = [];
-  if (lead.isTest) r.push('סומן ידנית כבדיקה');
+  if (lead.manualTest === true) r.push('סומן ידנית כבדיקה');
   const digits = String(lead.phone || '').replace(/\D/g, '').replace(/^972/, '0');
   if (digits && digits === '0544427244') r.push('מספר הטלפון של העסק עצמו');
   if (/בדיקה|טסט|\btest\b|\bqa\b/i.test(`${lead.name || ''} ${lead.notes || ''}`)) r.push('שם/הערה מכילים "בדיקה"/"test"');
-  if (/^QA-/i.test(lead.refCode || '') || /qa/i.test(lead.utmSource || '')) r.push('קוד/UTM של בדיקה');
+  if (/^QA-/i.test(lead.refCode || '') || /^qa$|^test$/i.test(lead.utmSource || '') || /^(qa|test)$|^test-|^qa-/i.test(lead.utmMedium || '')) r.push('קוד/UTM של בדיקה');
+  if (/^QA[-_ ]/i.test(lead.name || '')) r.push('שם מתחיל ב-QA');
+  if (/\bQA\b|בדיקה/i.test(lead.sheetStatus || '')) r.push('מסומן כבדיקה בגיליון');
   return r;
 }
 
@@ -38,17 +40,23 @@ export function attribute(db, lead) {
     lead.area ||= post.areaId;
   }
   lead.source ||= 'unknown';
-  const qa = qaReasons(lead);
+  // manualTest: true/false = החלטה ידנית שגוברת על הזיהוי האוטומטי
+  const qa = lead.manualTest === false ? [] : qaReasons(lead);
   lead.isTest = qa.length > 0;
   lead.qaReasons = qa;
   return lead;
 }
 
+/** לידים אמיתיים: לא בדיקה ולא כפילות של ליד אחר */
+export const realLeads = (db) => db.leads.filter((l) => !l.isTest && !l.duplicateOf);
+
+export function cityLabel(l) { return AREAS.find((a) => a.id === l.area)?.label || l.city || 'לא ידוע'; }
+
 const countBy = (arr, fn) => arr.reduce((m, x) => { const k = fn(x) ?? 'unknown'; m[k] = (m[k] || 0) + 1; return m; }, {});
 
 export function computeStats(db, now = new Date()) {
   const t = new Date(now).getTime();
-  const real = db.leads.filter((l) => !l.isTest);
+  const real = realLeads(db);
   const month = israelParts(now).ymd.slice(0, 7);
   const realPub = db.history.filter((h) => h.mode !== 'simulation');
   const byTarget = db.groups.map((g) => {
@@ -64,10 +72,13 @@ export function computeStats(db, now = new Date()) {
       last7: real.filter((l) => t - Date.parse(l.createdAt) < 7 * DAY).length,
       thisMonth: real.filter((l) => israelParts(new Date(l.createdAt)).ymd.startsWith(month)).length,
       won: real.filter((l) => l.status === 'won').length,
-      qaExcluded: db.leads.length - real.length,
+      qaExcluded: db.leads.filter((l) => l.isTest).length,
+      duplicatesExcluded: db.leads.filter((l) => !l.isTest && l.duplicateOf).length,
+      fromSheet: real.filter((l) => l.origin === 'sheet').length,
       bySource: countBy(real, (l) => l.source),
       byService: countBy(real, (l) => l.service),
       byArea: countBy(real, (l) => l.area),
+      byCity: countBy(real, cityLabel),
       byStatus: countBy(real, (l) => l.status),
       attributedToPost: real.filter((l) => l.postId).length,
     },

@@ -1,7 +1,8 @@
 // ממשק ניהול — JavaScript נקי, ללא תלויות חיצוניות.
 const TABS = [
   ['home', 'לוח בקרה'], ['groups', 'קבוצות וערוצים'], ['posts', 'פוסטים מוכנים'], ['schedule', 'לוח פרסומים'],
-  ['media', 'תמונות וסרטונים'], ['leads', 'לידים'], ['stats', 'סטטיסטיקות'], ['history', 'היסטוריה ושגיאות'], ['settings', 'הגדרות וחיבורים'],
+  ['media', 'תמונות וסרטונים'], ['leads', 'לידים'], ['report', 'דוח לידים'], ['stats', 'סטטיסטיקות'],
+  ['connections', 'חיבורים'], ['backup', 'ייצוא וגיבוי'], ['history', 'היסטוריה ושגיאות'], ['settings', 'הגדרות'],
 ];
 let S = null;
 let tab = (() => { try { return localStorage.getItem('tab') || 'home'; } catch { return 'home'; } })();
@@ -238,12 +239,12 @@ V.leads = () => {
     <button class="btn primary">שמירה</button>
   </form>
   <p class="small muted">כל הפניות מגיעות אל ${esc(S.business.phoneDisplay)}. ליד שנרשם עם מספר העסק עצמו, עם קוד QA או עם המילה "בדיקה" מסומן כבדיקה ולא נספר בסטטיסטיקות.</p></section><br>
-  <section class="card"><h2>לידים (${S.stats.leads.total} אמיתיים${S.stats.leads.qaExcluded ? `, ${S.stats.leads.qaExcluded} בדיקות` : ''})</h2><div class="tablewrap"><table>
+  <section class="card"><h2>לידים (${S.stats.leads.total} אמיתיים${S.stats.leads.qaExcluded ? `, ${S.stats.leads.qaExcluded} בדיקות` : ''}${S.stats.leads.duplicatesExcluded ? `, ${S.stats.leads.duplicatesExcluded} כפולים` : ''})</h2><div class="row"><a class="btn sm" href="/api/export/leads.csv" download>ייצוא CSV</a><button class="btn sm" data-tab="connections">סנכרון מהגיליון</button></div><br><div class="tablewrap"><table>
     <tr><th>תאריך</th><th>שם / טלפון</th><th>שירות · אזור</th><th>מקור</th><th>סטטוס</th><th>שווי ₪</th><th></th></tr>
     ${S.leads.map((l) => `<tr ${l.isTest ? 'style="opacity:.6"' : ''}>
       <td>${fmt(l.createdAt)}${l.isTest ? `<div><span class="badge">בדיקה</span></div><div class="small muted">${esc((l.qaReasons || []).join(', '))}</div>` : ''}</td>
       <td>${esc(l.name)}<div class="small" dir="ltr">${esc(l.phone)}</div></td>
-      <td class="small">${esc(svc(l.service))} · ${esc(area(l.area))}</td>
+      <td class="small">${esc(l.service ? svc(l.service) : (l.serviceRaw || '—'))} · ${esc(l.area ? area(l.area) : (l.city || '—'))}${l.origin === 'sheet' ? '<div><span class="badge">מהגיליון</span></div>' : ''}${l.duplicateOf ? `<div><span class="badge warn">כפילות של ${esc(l.duplicateOf)}</span></div>` : ''}</td>
       <td class="small">${esc(S.leadSources[l.source] || '—')}${l.targetId ? `<div class="muted">${esc(grp(l.targetId)?.name || l.targetId)}</div>` : ''}${l.refCode ? `<div class="muted">${esc(l.refCode)}</div>` : ''}</td>
       <td><select data-lead-status="${l.id}">${Object.entries(S.leadStatuses).map(([k, v]) => `<option value="${k}" ${k === l.status ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></td>
       <td><input type="number" min="0" style="width:90px" data-lead-value="${l.id}" value="${esc(l.value ?? '')}"></td>
@@ -312,15 +313,101 @@ V.settings = () => {
     </form></section>
   <section class="card"><h2>חיבורים</h2><table>
     <tr><td>לוח שבת/חגים (Hebcal)</td><td>${c.hebcal.ok ? '<span class="badge ok">מחובר ומאומת</span>' : '<span class="badge bad">לא מאומת — פרסום חסום</span>'}<div class="small muted">${fmt(c.hebcal.lastFetch)}</div></td></tr>
-    <tr><td>דף עסקי בפייסבוק</td><td>${c.facebookPage.tokenPresent && c.facebookPage.pageIdPresent ? '<span class="badge ok">טוקן קיים</span>' : '<span class="badge warn">לא מחובר</span>'}<div class="small muted">FB_PAGE_ID, FB_PAGE_ACCESS_TOKEN בקובץ .env</div></td></tr>
+    <tr><td>גיליון לידים</td><td>${c.sheet.serviceAccountEmail ? '<span class="badge ok">מפתח קיים</span>' : '<span class="badge warn">לא מחובר</span>'}<div class="small muted">${c.sheet.lastSync ? `סנכרון אחרון: ${fmt(c.sheet.lastSync.at)} ${c.sheet.lastSync.ok ? '✔' : '✖'}` : 'טרם סונכרן'} · <a href="#" data-tab="connections">ניהול</a></div></td></tr>
+    <tr><td>דף עסקי בפייסבוק</td><td>${c.facebookPage.lastCheck?.ok ? '<span class="badge ok">מחובר (בדיקה בלבד)</span>' : c.facebookPage.tokenPresent ? '<span class="badge warn">טוקן קיים — טרם אומת</span>' : '<span class="badge warn">לא מחובר</span>'}<div class="small muted"><a href="#" data-tab="connections">ניהול</a></div></td></tr>
     <tr><td>קבוצות פייסבוק</td><td><span class="badge">ידני בלבד</span><div class="small muted">${esc(S.targetTypes.facebook_group.why)}</div></td></tr>
     <tr><td>אנליטיקס באתר</td><td><span class="badge warn">לא מחובר</span><div class="small muted">${esc(c.websiteAnalytics.note)}</div></td></tr>
     <tr><td>וואטסאפ</td><td><span class="badge ok">${esc(c.whatsapp.number)}</span><div class="small muted">${esc(c.whatsapp.note)}</div></td></tr>
   </table></section>
-  <section class="card"><h2>גיבוי</h2><p class="small">כל הנתונים נשמרים בקובץ <code>data/db.json</code> במחשב שלכם, ואחרי כל שינוי נשמר גיבוי <code>db.json.bak</code>.</p>
-    <a class="btn" href="/api/export" download>הורדת גיבוי מלא (JSON)</a></section>
   </div>`;
 };
+
+// ---------- דוח לידים ----------
+let RF = { from: '', to: '' }; let REP = null;
+function repTable(title, list, withPosts) {
+  return `<section class="card"><h3>${esc(title)}</h3><div class="tablewrap"><table>
+    <tr><th>${esc(title.replace('לפי ', ''))}</th><th>לידים</th><th>נוצר קשר</th><th>הצעה</th><th>נסגרו</th><th>שווי ₪</th>${withPosts ? '<th>פרסומים</th><th>לידים/פרסום</th>' : ''}</tr>
+    ${list.map((r) => `<tr><td>${esc(r.key)}</td><td><b>${r.leads}</b></td><td>${r.contacted}</td><td>${r.quoteSent}</td><td>${r.won}</td><td>${r.value ? r.value.toLocaleString('he-IL') : '—'}</td>${withPosts ? `<td>${r.posts ?? '—'}</td><td>${r.leadsPerPost ?? '—'}</td>` : ''}</tr>`).join('') || `<tr><td colspan="${withPosts ? 8 : 6}" class="muted">אין לידים אמיתיים בטווח</td></tr>`}
+  </table></div></section>`;
+}
+V.report = () => {
+  const r = REP || S.report; const t = r.totals;
+  const q = new URLSearchParams(Object.entries(RF).filter(([, v]) => v)).toString();
+  return `<section class="card"><h2>דוח לידים</h2>
+    <form class="f" data-form="reportFilter">
+      <label>מתאריך<input type="date" name="from" value="${esc(RF.from)}"></label>
+      <label>עד תאריך<input type="date" name="to" value="${esc(RF.to)}"></label>
+      <div class="row"><button class="btn primary">הצג</button><button type="button" class="btn" data-action="reportClear">כל התקופה</button>
+      <a class="btn" href="/api/export/report.csv${q ? `?${q}` : ''}" download>ייצוא הדוח ל-CSV</a></div>
+    </form>
+    <p class="small muted">בדוח נספרים רק לידים אמיתיים. ${t.qa} בדיקות QA ו-${t.duplicates} כפילויות לא נספרו.</p></section><br>
+  <div class="tiles">${tile(t.real, 'לידים אמיתיים')}${tile(t.won, 'עבודות שנסגרו')}${tile(t.value ? `₪${t.value.toLocaleString('he-IL')}` : '₪0', 'שווי עבודות שנסגרו')}${tile(t.qa, 'בדיקות QA (לא נספרו)')}</div>
+  <div class="grid">${repTable('לפי מקור', r.bySource)}${repTable('לפי עיר', r.byCity)}</div><br>
+  ${repTable('לפי קבוצה', r.byGroup, true)}<br>${repTable('לפי פוסט', r.byPost, true)}`;
+};
+
+// ---------- חיבורים ----------
+V.connections = () => {
+  const c = S.connections; const sh = c.sheet; const fb = c.facebookPage; const ls = sh.lastSync; const chk = fb.lastCheck;
+  return `<div class="grid">
+  <section class="card stack"><h2>גיליון הלידים מהאתר</h2>
+    <p class="small">המערכת <b>קוראת בלבד</b> מהטאב "${esc(sh.tab)}". היא לא כותבת לגיליון, לא מוחקת ולא משנה בו שורות. כל רשומה מזוהה לפי "מפתח כפילות", כך שסנכרון חוזר לא יוצר כפילויות. רשומות QA נשמרות, אבל לא נספרות.</p>
+    ${ls ? `<div class="notice ${ls.ok ? '' : 'bad'} small">סנכרון אחרון: ${fmt(ls.at)} (${esc({ manual: 'ידני', auto: 'אוטומטי', csv: 'CSV' }[ls.reason] || ls.reason)})<br>${ls.ok ? `${ls.result.rows} שורות · ${ls.result.added} חדשים · ${ls.result.updated} עודכנו · ${ls.result.qa} בדיקות QA · ${ls.result.duplicates} כפולים · <b>${ls.result.real} לידים אמיתיים</b>` : esc(ls.error)}</div>` : '<p class="muted small">טרם בוצע סנכרון.</p>'}
+    <h3>אפשרות א׳ — סנכרון אוטומטי (Google Sheets API, חינם)</h3>
+    ${sh.serviceAccountEmail ? `<p class="small">מפתח פעיל: <code dir="ltr">${esc(sh.serviceAccountEmail)}</code><br>ודאו שהגיליון משותף עם הכתובת הזו בהרשאת <b>צפייה בלבד</b>.</p>
+      <div class="row"><button class="btn primary" data-action="sheetSync">סנכרן עכשיו</button><button class="btn sm danger" data-action="sheetKeyDel">הסר מפתח</button></div>`
+    : `<ol class="small"><li>ב-console.cloud.google.com: צרו פרויקט (חינם) והפעילו את Google Sheets API.</li><li>צרו Service Account, ובלשונית Keys הורידו מפתח JSON.</li><li>שתפו את הגיליון עם כתובת ה-Service Account בהרשאת <b>צפייה בלבד</b>.</li><li>העלו כאן את קובץ ה-JSON. הוא נשמר רק במחשב הזה, בתיקייה data.</li></ol>
+      <form class="f" data-form="saUpload"><label class="full">קובץ מפתח JSON<input type="file" name="file" accept="application/json,.json" required></label><button class="btn primary">שמירת מפתח</button></form>`}
+    ${sh.serviceAccountError ? `<p class="small err">${esc(sh.serviceAccountError)}</p>` : ''}
+    <form class="f" data-form="sheetSettings">
+      <label>מזהה גיליון<input name="spreadsheetId" dir="ltr" value="${esc(sh.spreadsheetId)}"></label>
+      <label>טאב<input name="tab" value="${esc(sh.tab)}"></label>
+      <label class="chk"><input type="checkbox" name="autoSync" ${sh.autoSync ? 'checked' : ''}>סנכרון אוטומטי כל 30 דקות</label>
+      <button class="btn">שמירה</button></form>
+    <h3>אפשרות ב׳ — ייבוא קובץ CSV (בלי שום הגדרה)</h3>
+    <p class="small">בגיליון: קובץ ← הורדה ← CSV (של הטאב "${esc(sh.tab)}"), ואז העלו את הקובץ כאן. אפשר לייבא שוב בכל פעם, בלי כפילויות.</p>
+    <form class="f" data-form="csvImport"><label class="full">קובץ CSV<input type="file" name="file" accept=".csv,text/csv" required></label><button class="btn primary">ייבוא</button></form>
+  </section>
+  <section class="card stack"><h2>דף עסקי בפייסבוק (Meta Graph API)</h2>
+    <div class="notice small">החיבור משמש כרגע <b>לבדיקה בלבד</b>. הבדיקה שולחת רק בקשות קריאה (GET) ולא מפרסמת כלום. פרסום חי נשאר כבוי עד שתאשרו במפורש בלשונית ההגדרות.</div>
+    <p class="small">טוקן: ${fb.tokenPresent ? `<code dir="ltr">${esc(fb.tokenMasked)}</code> (${esc(fb.tokenSource)})` : '<span class="err">לא הוגדר</span>'} · מזהה דף: ${fb.pageId ? `<code dir="ltr">${esc(fb.pageId)}</code>` : '<span class="err">לא הוגדר</span>'}</p>
+    <form class="f" data-form="fbCreds" autocomplete="off">
+      <label>מזהה הדף (Page ID)<input name="pageId" dir="ltr" inputmode="numeric" value="${esc(fb.pageId || '')}"></label>
+      <label>Page Access Token<input name="token" type="password" dir="ltr" placeholder="${fb.tokenPresent ? 'נשמר — השאירו ריק כדי לא לשנות' : 'הדביקו כאן, לא בצ׳אט'}"></label>
+      <div class="full row"><button class="btn primary">שמירה מקומית</button>${fb.tokenPresent ? '<button type="button" class="btn sm danger" data-action="fbDel">מחיקת הטוקן</button>' : ''}</div>
+    </form>
+    <p class="small muted">הטוקן נשמר רק במחשב הזה, בקובץ data/secrets.json. הוא לא נכנס לגיט ולא לגיבויים, ולא מוצג שוב במלואו.</p>
+    <button class="btn accent" data-action="fbCheck" ${fb.tokenPresent ? '' : 'disabled'}>בדוק חיבור והרשאות</button>
+    ${chk ? `<div class="stack"><div class="row"><b>תוצאה (${fmt(chk.checkedAt)}):</b>${chk.ok ? '<span class="badge ok">תקין</span>' : '<span class="badge bad">חסרים פריטים</span>'}</div>
+      ${chk.steps.map((x) => `<div class="small ${x.ok ? 'okc' : 'err'}">${x.ok ? '✔' : '✖'} ${esc(x.msg)}</div>`).join('')}
+      ${chk.page ? `<div class="small">דף: <b>${esc(chk.page.name)}</b> (${esc(chk.page.id)})${chk.page.link ? ` · <a href="${esc(chk.page.link)}" target="_blank" rel="noopener">פתח</a>` : ''}</div>` : ''}
+      <div class="small">הרשאות קיימות: <code dir="ltr">${esc(chk.scopes.join(', ') || '—')}</code></div>
+      <div class="small">פרסום חי: <b>${chk.liveEnabled ? 'מופעל' : 'כבוי'}</b></div></div>` : ''}
+    <details class="small"><summary>איך משיגים טוקן (חינם, ללא בדיקת אפליקציה)</summary><ol>
+      <li>ב-developers.facebook.com צרו אפליקציה מסוג Business. אין צורך לפרסם אותה, כי מנהל הדף יכול להשתמש בה במצב פיתוח.</li>
+      <li>ב-Graph API Explorer בחרו את האפליקציה ואת ההרשאות pages_show_list, pages_read_engagement ו-pages_manage_posts, ולחצו Generate Access Token.</li>
+      <li>בשדה "User or Page" בחרו את הדף "ברכה והצלחה שיפוצים". הטוקן שמתקבל הוא Page Token.</li>
+      <li>לטוקן ארוך טווח השתמשו ב-Access Token Debugger ובחרו Extend.</li>
+      <li>הדביקו את הטוקן ואת מזהה הדף בטופס כאן, <b>לא בצ׳אט</b>, ולחצו "בדוק חיבור".</li></ol></details>
+  </section></div>`;
+};
+
+// ---------- ייצוא וגיבוי ----------
+V.backup = () => `<div class="grid">
+  <section class="card stack"><h2>ייצוא נתונים</h2>
+    <div class="row"><a class="btn primary" href="/api/export" download>גיבוי מלא (JSON)</a></div>
+    <div class="row"><a class="btn" href="/api/export/leads.csv" download>לידים (CSV)</a><a class="btn" href="/api/export/report.csv" download>דוח לידים (CSV)</a>
+      <a class="btn" href="/api/export/posts.csv" download>פוסטים (CSV)</a><a class="btn" href="/api/export/history.csv" download>היסטוריית פרסומים (CSV)</a></div>
+    <p class="small muted">קובצי ה-CSV נפתחים באקסל ובגוגל שיטס עם עברית תקינה. הגיבוי לא כולל טוקנים ומפתחות. תמונות וסרטונים נשמרים בנפרד בתיקייה data/media.</p></section>
+  <section class="card stack"><h2>גיבויים במחשב</h2>
+    <p class="small">בכל יום נשמר גיבוי אוטומטי בתיקייה data/backups, והמערכת שומרת את 30 האחרונים.</p>
+    <button class="btn" data-action="backupNow">צור גיבוי עכשיו</button>
+    <table><tr><th>קובץ</th><th>זמן</th><th>גודל</th></tr>${S.backups.map((b) => `<tr><td class="small" dir="ltr">${esc(b.name)}</td><td class="small">${fmt(b.mtime)}</td><td class="small">${Math.ceil(b.size / 1024)}KB</td></tr>`).join('') || '<tr><td colspan="3" class="muted">אין עדיין</td></tr>'}</table></section>
+  <section class="card stack"><h2>שחזור מגיבוי</h2>
+    <p class="small">לפני השחזור המערכת שומרת אוטומטית גיבוי של המצב הנוכחי. אחרי השחזור היא חוזרת תמיד למצב סימולציה.</p>
+    <form class="f" data-form="restore"><label class="full">קובץ גיבוי (JSON)<input type="file" name="file" accept="application/json,.json" required></label>
+      <label class="full">לאישור הקלידו: <b>שחזר</b><input name="confirm"></label><button class="btn danger">שחזור</button></form></section>
+</div>`;
 
 function render() {
   renderTop(); renderTabs();
@@ -330,7 +417,7 @@ function render() {
 // ---------- אירועים ----------
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('[data-tab]');
-  if (t) { tab = t.dataset.tab; try { localStorage.setItem('tab', tab); } catch {} render(); return; }
+  if (t) { e.preventDefault(); tab = t.dataset.tab; try { localStorage.setItem('tab', tab); } catch {} render(); return; }
   if (e.target.id === 'killBtn') {
     const on = !S.settings.killSwitch;
     if (!on || confirm('לעצור את כל הפרסומים מיד?')) act(() => api('POST', '/api/kill-switch', { on }), on ? 'כל הפרסומים נעצרו' : 'הפרסומים הופעלו מחדש');
@@ -379,6 +466,12 @@ document.addEventListener('click', async (e) => {
     toggleTest: () => act(() => api('PUT', `/api/leads/${id}`, { isTest: b.dataset.test === '1' }), 'עודכן'),
     delLead: () => confirm('למחוק את הליד?') && act(() => api('DELETE', `/api/leads/${id}`), 'נמחק'),
     toSim: () => act(() => api('POST', '/api/settings', { mode: 'simulation' }), 'חזרה לסימולציה'),
+    reportClear: () => { RF = { from: '', to: '' }; REP = null; render(); },
+    sheetSync: () => act(async () => { const r = await api('POST', '/api/sheet/sync'); toast(`סונכרן: ${r.result.added} חדשים, ${r.result.real} לידים אמיתיים, ${r.result.qa} QA`); }),
+    sheetKeyDel: () => confirm('להסיר את מפתח הגיליון מהמחשב?') && act(() => api('DELETE', '/api/sheet/service-account'), 'הוסר'),
+    fbDel: () => confirm('למחוק את הטוקן מהמחשב?') && act(() => api('DELETE', '/api/facebook/credentials'), 'נמחק'),
+    fbCheck: () => act(async () => { const r = await api('POST', '/api/facebook/check'); toast(r.ok ? 'החיבור תקין' : 'הבדיקה הסתיימה — ראו פירוט'); }),
+    backupNow: () => act(() => api('POST', '/api/backups/now'), 'נוצר גיבוי'),
   };
   if (A[b.dataset.action]) { e.preventDefault(); A[b.dataset.action](); }
 });
@@ -413,11 +506,18 @@ document.addEventListener('submit', async (e) => {
     },
     lead: () => act(() => api('POST', '/api/leads', { ...o, isTest: chk('isTest') }).then((l) => { f.reset(); if (l.isTest) toast('נשמר כבדיקה — לא ייספר'); }), 'הליד נשמר'),
     settings: () => act(() => api('POST', '/api/settings', { dailyCap: o.dailyCap, minMinutesBetweenPosts: o.minMinutesBetweenPosts, sameTargetDupDays: o.sameTargetDupDays, anyTargetDupDays: o.anyTargetDupDays, shabbatMarginBeforeMin: o.shabbatMarginBeforeMin, shabbatMarginAfterMin: o.shabbatMarginAfterMin, blockMemorialDays: chk('blockMemorialDays'), postingHours: { start: o.hStart, end: o.hEnd } }), 'נשמר'),
+    reportFilter: async () => { RF = { from: o.from, to: o.to }; try { REP = await api('GET', `/api/report?${new URLSearchParams(Object.entries(RF).filter(([, v]) => v))}`); render(); } catch (er) { showError(er); } },
+    saUpload: async () => { const text = await readFile(fd.get('file')); act(() => api('POST', '/api/sheet/service-account', { json: text }), 'המפתח נשמר — שתפו את הגיליון עם כתובת ה-Service Account'); },
+    sheetSettings: () => act(() => api('POST', '/api/sheet/settings', { spreadsheetId: o.spreadsheetId, tab: o.tab, autoSync: chk('autoSync') }), 'נשמר'),
+    csvImport: async () => { const csv = await readFile(fd.get('file')); act(async () => { const r = await api('POST', '/api/sheet/import-csv', { csv }); toast(`יובאו ${r.result.rows} שורות: ${r.result.added} חדשים, ${r.result.real} אמיתיים, ${r.result.qa} QA, ${r.result.duplicates} כפולים`); f.reset(); }); },
+    fbCreds: () => act(() => api('POST', '/api/facebook/credentials', { pageId: o.pageId, token: o.token }).then(() => f.reset()), 'נשמר מקומית'),
+    restore: async () => { let data; try { data = JSON.parse(await readFile(fd.get('file'))); } catch { return toast('הקובץ אינו JSON תקין'); } if (confirm('להחליף את כל הנתונים בגיבוי?')) act(() => api('POST', '/api/backup/restore', { data, confirm: o.confirm }), 'שוחזר'); },
     toLive: () => confirm('פרסום חי ישלח פוסטים אמיתיים לדף העסקי. להמשיך?') && act(() => api('POST', '/api/settings', { mode: 'live', confirm: o.confirm }), 'עבר לפרסום חי'),
   };
   F[kind]?.();
 });
 
+function readFile(file) { return new Promise((res, rej) => { if (!file?.size) return rej(new Error('בחרו קובץ')); const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsText(file, 'utf-8'); }); }
 function openDlg(html) { $('#dlgBody').innerHTML = html; $('#dlg').showModal(); }
 async function copy(text, notify = true) {
   try { await navigator.clipboard.writeText(text); if (notify) toast('הועתק'); }

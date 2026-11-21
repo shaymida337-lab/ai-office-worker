@@ -18,7 +18,7 @@ test('בדיקות QA לא נספרות כלידים', () => {
   assert.ok(qaReasons({ phone: '+972 54-442-7244' }).length);
   assert.ok(qaReasons({ name: 'בדיקה' }).length);
   assert.ok(qaReasons({ refCode: 'QA-B1001' }).length);
-  assert.ok(qaReasons({ isTest: true }).length);
+  assert.ok(qaReasons({ manualTest: true }).length);
   assert.equal(qaReasons({ name: 'יוסי', phone: '052-9998877' }).length, 0);
   assert.equal(extractRefCode('היי (קוד QA-B1001)'), 'QA-B1001');
 

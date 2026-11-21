@@ -1,2 +1,4 @@
 data/
 .env
+*service-account*.json
+secrets.json
