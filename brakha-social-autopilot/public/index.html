@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ברכה והצלחה — שיווק אוטומטי</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">ב</div>
+    <div>
+      <h1>ברכה והצלחה שיפוצים</h1>
+      <div class="sub">מערכת שיווק ולידים — פרטית ומקומית</div>
+    </div>
+  </div>
+  <div class="top-status">
+    <span id="modeBadge" class="badge"></span>
+    <span id="guardBadge" class="badge"></span>
+    <button id="killBtn" class="btn kill"></button>
+  </div>
+</header>
+<nav class="tabs" id="tabs" role="tablist"></nav>
+<main id="main"></main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<dialog id="dlg"><div id="dlgBody"></div></dialog>
+<script src="/app.js" type="module"></script>
+</body>
+</html>
