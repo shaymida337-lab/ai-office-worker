@@ -1,0 +1,362 @@
+[
+ {
+  "id": "RLN-N7-V01",
+  "checks": {
+   "resolution_1080x1920": {
+    "ok": true,
+    "value": "1080x1920"
+   },
+   "h264_yuv420p": {
+    "ok": true,
+    "value": "h264/yuv420p"
+   },
+   "aac_48k": {
+    "ok": true,
+    "value": "aac"
+   },
+   "length_in_bucket": {
+    "ok": true,
+    "value": 9.0
+   },
+   "loudness_-14LUFS±1.5": {
+    "ok": true,
+    "value": -14.4
+   },
+   "true_peak<=-1dB": {
+    "ok": true,
+    "value": -1.5
+   },
+   "no_black_frames": {
+    "ok": true,
+    "value": 0
+   },
+   "voice_present": {
+    "ok": true,
+    "value": 85
+   },
+   "transcript_match>=0.70": {
+    "ok": true,
+    "value": 0.75
+   },
+   "caption_sync<=0.35s": {
+    "ok": true,
+    "value": 0.18
+   },
+   "captions_cover_vo": {
+    "ok": true,
+    "value": "0.25-8.99"
+   },
+   "no_price_or_medical_claims": {
+    "ok": true,
+    "value": []
+   },
+   "source_ranges_allowed": {
+    "ok": true,
+    "value": []
+   }
+  },
+  "fail": [],
+  "transcript": "למה יש לו ידיים?  כדי ללושת אקטפיים בתנועה שמידה מה ידיים.  רלו נבי אין שבע, הכישובי פופיל.",
+  "status": "PASS (auto)"
+ },
+ {
+  "id": "RLN-N7-V02",
+  "checks": {
+   "resolution_1080x1920": {
+    "ok": true,
+    "value": "1080x1920"
+   },
+   "h264_yuv420p": {
+    "ok": true,
+    "value": "h264/yuv420p"
+   },
+   "aac_48k": {
+    "ok": true,
+    "value": "aac"
+   },
+   "length_in_bucket": {
+    "ok": true,
+    "value": 14.2
+   },
+   "loudness_-14LUFS±1.5": {
+    "ok": true,
+    "value": -14.5
+   },
+   "true_peak<=-1dB": {
+    "ok": true,
+    "value": -1.5
+   },
+   "no_black_frames": {
+    "ok": true,
+    "value": 0
+   },
+   "voice_present": {
+    "ok": true,
+    "value": 149
+   },
+   "transcript_match>=0.70": {
+    "ok": true,
+    "value": 0.91
+   },
+   "caption_sync<=0.35s": {
+    "ok": true,
+    "value": 0.13
+   },
+   "captions_cover_vo": {
+    "ok": true,
+    "value": "0.25-14.19"
+   },
+   "no_price_or_medical_claims": {
+    "ok": true,
+    "value": []
+   },
+   "source_ranges_allowed": {
+    "ok": true,
+    "value": []
+   }
+  },
+  "fail": [],
+  "transcript": "יושבים כל היום מול המחשב  והקטפיים הרגישות המוסות בערב  מניחים את אין שבע על הקטפיים, מפעילים את הייסוי והחימום, ונשנים אחורה לרגע של רוגע  הקישור ביפופיל",
+  "status": "PASS (auto)"
+ },
+ {
+  "id": "RLN-N7-V03",
+  "checks": {
+   "resolution_1080x1920": {
+    "ok": true,
+    "value": "1080x1920"
+   },
+   "h264_yuv420p": {
+    "ok": true,
+    "value": "h264/yuv420p"
+   },
+   "aac_48k": {
+    "ok": true,
+    "value": "aac"
+   },
+   "length_in_bucket": {
+    "ok": true,
+    "value": 8.5
+   },
+   "loudness_-14LUFS±1.5": {
+    "ok": true,
+    "value": -14.1
+   },
+   "true_peak<=-1dB": {
+    "ok": true,
+    "value": -1.5
+   },
+   "no_black_frames": {
+    "ok": true,
+    "value": 0
+   },
+   "voice_present": {
+    "ok": true,
+    "value": 67
+   },
+   "transcript_match>=0.70": {
+    "ok": true,
+    "value": 0.95
+   },
+   "caption_sync<=0.35s": {
+    "ok": true,
+    "value": 0.14
+   },
+   "captions_cover_vo": {
+    "ok": true,
+    "value": "0.26-8.50"
+   },
+   "no_price_or_medical_claims": {
+    "ok": true,
+    "value": []
+   },
+   "source_ranges_allowed": {
+    "ok": true,
+    "value": []
+   }
+  },
+  "fail": [],
+  "transcript": "תסתכלו על התנועה.  ראשי סוי דמויה ידיים עם חימום נעים.  רגע של רוג הבית.",
+  "status": "PASS (auto)"
+ },
+ {
+  "id": "RLN-N7-V04",
+  "checks": {
+   "resolution_1080x1920": {
+    "ok": true,
+    "value": "1080x1920"
+   },
+   "h264_yuv420p": {
+    "ok": true,
+    "value": "h264/yuv420p"
+   },
+   "aac_48k": {
+    "ok": true,
+    "value": "aac"
+   },
+   "length_in_bucket": {
+    "ok": true,
+    "value": 19.4
+   },
+   "loudness_-14LUFS±1.5": {
+    "ok": true,
+    "value": -14.1
+   },
+   "true_peak<=-1dB": {
+    "ok": true,
+    "value": -1.5
+   },
+   "no_black_frames": {
+    "ok": true,
+    "value": 0
+   },
+   "voice_present": {
+    "ok": true,
+    "value": 194
+   },
+   "transcript_match>=0.70": {
+    "ok": true,
+    "value": 0.89
+   },
+   "caption_sync<=0.35s": {
+    "ok": true,
+    "value": 0.15
+   },
+   "captions_cover_vo": {
+    "ok": true,
+    "value": "0.25-19.38"
+   },
+   "no_price_or_medical_claims": {
+    "ok": true,
+    "value": []
+   },
+   "source_ranges_allowed": {
+    "ok": true,
+    "value": []
+   }
+  },
+  "fail": [],
+  "transcript": "יש לך מישהו שתמיד אומר שהוא לא צריך כלום?  וברב הכתפיים שלא עמוסות?  אז במקום עוד מתנה שתישאר במגרה,  תנו לו רגע של רוגע אחרי יום הרוך.  מכשיר יסוי לצבר ולקתפיים, עם חימום.  ולא נביא אין שבע.  הקישור בפרופיל.",
+  "status": "PASS (auto)"
+ },
+ {
+  "id": "RLN-N7-V05",
+  "checks": {
+   "resolution_1080x1920": {
+    "ok": true,
+    "value": "1080x1920"
+   },
+   "h264_yuv420p": {
+    "ok": true,
+    "value": "h264/yuv420p"
+   },
+   "aac_48k": {
+    "ok": true,
+    "value": "aac"
+   },
+   "length_in_bucket": {
+    "ok": true,
+    "value": 13.83
+   },
+   "loudness_-14LUFS±1.5": {
+    "ok": true,
+    "value": -14.6
+   },
+   "true_peak<=-1dB": {
+    "ok": true,
+    "value": -1.5
+   },
+   "no_black_frames": {
+    "ok": true,
+    "value": 0
+   },
+   "voice_present": {
+    "ok": true,
+    "value": 130
+   },
+   "transcript_match>=0.70": {
+    "ok": true,
+    "value": 0.87
+   },
+   "caption_sync<=0.35s": {
+    "ok": true,
+    "value": 0.21
+   },
+   "captions_cover_vo": {
+    "ok": true,
+    "value": "0.25-13.81"
+   },
+   "no_price_or_medical_claims": {
+    "ok": true,
+    "value": []
+   },
+   "source_ranges_allowed": {
+    "ok": true,
+    "value": []
+   }
+  },
+  "fail": [],
+  "transcript": "זה לא צעצוע, וזה לא יצור מסרט אימה.  זה מכשיר עיסוי לצבר ולקטפיים.  הידיים נועדו לדמות לישה, ויש גם חימום.  ולא נביא אין שבע, הקישור בפופיל.",
+  "status": "PASS (auto)"
+ },
+ {
+  "id": "RLN-N7-V06",
+  "checks": {
+   "resolution_1080x1920": {
+    "ok": true,
+    "value": "1080x1920"
+   },
+   "h264_yuv420p": {
+    "ok": true,
+    "value": "h264/yuv420p"
+   },
+   "aac_48k": {
+    "ok": true,
+    "value": "aac"
+   },
+   "length_in_bucket": {
+    "ok": true,
+    "value": 19.74
+   },
+   "loudness_-14LUFS±1.5": {
+    "ok": true,
+    "value": -14.7
+   },
+   "true_peak<=-1dB": {
+    "ok": true,
+    "value": -1.5
+   },
+   "no_black_frames": {
+    "ok": true,
+    "value": 0
+   },
+   "voice_present": {
+    "ok": true,
+    "value": 179
+   },
+   "transcript_match>=0.70": {
+    "ok": true,
+    "value": 0.86
+   },
+   "caption_sync<=0.35s": {
+    "ok": true,
+    "value": 0.17
+   },
+   "captions_cover_vo": {
+    "ok": true,
+    "value": "0.24-19.74"
+   },
+   "no_price_or_medical_claims": {
+    "ok": true,
+    "value": []
+   },
+   "source_ranges_allowed": {
+    "ok": true,
+    "value": []
+   }
+  },
+  "fail": [],
+  "transcript": "שמונה שעות מול מסך  נשיאה הביתה  והקטפיים מרגישות את כל היום  אז כמה דקות על הספה  עיסוי לשאל הצבר ולקטפיים  עם חימום נעים  בלי לקבוע תור, ובלי לצאת מהבית  רלו נביא אין שבע  הקישור בפרופיל",
+  "status": "PASS (auto)"
+ }
+]
