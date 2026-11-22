@@ -1,0 +1,5 @@
+output/
+output_discover*.log
+data/seeds.csv
+data/dcoil_seen_ids.txt
+__pycache__/
