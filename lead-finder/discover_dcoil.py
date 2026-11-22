@@ -70,9 +70,14 @@ def biz_page(item):
 
 
 def main():
+    import os
+    only_c = os.environ.get("ONLY_CATS", "").split(",") if os.environ.get("ONLY_CATS") else None
+    only_city = os.environ.get("ONLY_CITIES", "").split(",") if os.environ.get("ONLY_CITIES") else None
+    cats = {k: v for k, v in CATS.items() if not only_c or k in only_c}
+    cities = {k: v for k, v in CITIES.items() if not only_city or k in only_city}
     items = {}
-    for code, cat in CATS.items():
-        for ccode, city in CITIES.items():
+    for code, cat in cats.items():
+        for ccode, city in cities.items():
             seen_pages, queue = set(), [f"https://www.d.co.il/h-c{code}-e0-p0-l0-city{ccode}/"]
             while queue and len(seen_pages) < MAX_PAGES:
                 pu = queue.pop(0)

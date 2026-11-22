@@ -425,7 +425,20 @@ def main():
     state = {"leads": [], "excluded": [], "sites": [], "done_urls": []}
     if STATE_FILE.exists():
         state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    seen_emails = {l["email"] for l in state["leads"]}
+    # re-apply blocklist / previous contacts to leads collected in earlier runs
+    keep = []
+    for l in state["leads"]:
+        dom = l["email"].split("@")[1]
+        if l["email"] in blocked or dom in blocked or l["email"] in previous:
+            state["excluded"].append({"item": l["email"], "reason": "ברשימת חסימה / פנייה קודמת (הוסר בדיעבד)",
+                                      "source": l["source"]})
+        else:
+            keep.append(l)
+    if len(keep) != len(state["leads"]):
+        log(f"removed {len(state['leads']) - len(keep)} leads now on blocklist/previous list")
+    state["leads"] = keep
+    seen_emails = {l["email"] for l in state["leads"]} | {x["item"] for x in state["excluded"]
+                                                         if "חסימה" in x["reason"]}
     seen_domains = {reg_domain(urlparse(s["url"] if s["url"].startswith("http") else "https://" + s["url"]).netloc)
                     for s in state["sites"]}
     done = set(state["done_urls"])
