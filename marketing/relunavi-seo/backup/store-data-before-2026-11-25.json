@@ -1,0 +1,37 @@
+{
+ "note": "Values before SEO changes on 2026-11-25. Restore by writing these values back with the Admin API.",
+ "products_seo": {
+  "relunavi-אקדח-עיסוי-נטען-עם-ראשים-מתחלפים (gid://shopify/Product/11043852681528)": {"title": null, "description": null},
+  "relunavi-neck-shoulder-massager (gid://shopify/Product/10982459474232)": {"title": "מכשיר עיסוי לצוואר ולכתפיים עם חימום N7 | RELUNAVI", "description": "מחפשים מכשיר עיסוי לצוואר ולכתפיים? הכירו את N7 של RELUNAVI עם חימום ועיצוב דמוי ידיים. צפו בפרטי הדגם, אפשרויות הבחירה, המשלוח ומדיניות ההחזרות."}
+ },
+ "media_alt": {
+  "gid://shopify/MediaImage/58436318986552": "גרפיקת מוצר RELUNAVI בעברית 4",
+  "gid://shopify/MediaImage/58436319019320": "גרפיקת מוצר RELUNAVI בעברית 5",
+  "gid://shopify/MediaImage/58436319052088": "גרפיקת מוצר RELUNAVI בעברית 6",
+  "gid://shopify/MediaImage/58436319084856": "גרפיקת מוצר RELUNAVI בעברית 7",
+  "gid://shopify/MediaImage/58436319248696": "גרפיקת מוצר RELUNAVI בעברית 12",
+  "gid://shopify/MediaImage/58436319314232": "גרפיקת מוצר RELUNAVI בעברית 14",
+  "gid://shopify/MediaImage/58441927819576": "RELUNAVI - תמונת ערך למעסה צוואר 2",
+  "gid://shopify/Video/58707607519544": "", "gid://shopify/Video/58708542521656": "", "gid://shopify/Video/58709508391224": "",
+  "gid://shopify/Video/58707172655416": "", "gid://shopify/Video/58708679983416": ""
+ },
+ "pages_global_title_tag_and_description_tag": {
+  "contact": [null, null], "about-us": [null, null], "faq": [null, null], "order-tracking": [null, null],
+  "shipping-policy": [null, null], "return-refund-policy": [null, null]
+ },
+ "collections_seo": {
+  "frontpage": {"title": null, "description": null},
+  "פתרונות-לגב": {"title": null, "description": null},
+  "פתרונות-לצוואר-ולכתפיים": {"title": null, "description": null},
+  "פתרונות-לרגליים-ולברכיים": {"title": null, "description": null},
+  "מארזים-ומתנות": {"title": null, "description": null},
+  "אביזרים-ומוצרים-משלימים": {"title": null, "description": null}
+ },
+ "collections_membership_before": {
+  "פתרונות-לגב": "12 products, all DRAFT",
+  "פתרונות-לרגליים-ולברכיים": "9 products, all DRAFT",
+  "מארזים-ומתנות": "6 products, all DRAFT",
+  "אביזרים-ומוצרים-משלימים": "5 products, all DRAFT",
+  "פתרונות-לצוואר-ולכתפיים": "10 products, 2 ACTIVE (N7, shiatsu)"
+ }
+}
