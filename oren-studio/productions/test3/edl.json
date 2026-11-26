@@ -1,0 +1,9 @@
+{"_doc": "sentence index -> shot. oren = talking head (punch-in levels), gfx = motion graphic full screen",
+ "shots": [
+  {"s": 0, "type": "oren", "zoom": 1.00},
+  {"s": 1, "type": "gfx", "gfx": "counter"},
+  {"s": 2, "type": "gfx", "gfx": "quote"},
+  {"s": 3, "type": "oren", "zoom": 1.22},
+  {"s": 4, "type": "gfx", "gfx": "checklist"},
+  {"s": 5, "type": "oren", "zoom": 1.10}
+ ]}
